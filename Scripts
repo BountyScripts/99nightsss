@@ -1,0 +1,801 @@
+-- 99 Nights Mobile Script v3.1 FIXED
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local LP = Players.LocalPlayer
+local Char = LP.Character or LP.CharacterAdded:Wait()
+local Hum = Char:WaitForChild("Humanoid")
+local Root = Char:WaitForChild("HumanoidRootPart")
+
+LP.CharacterAdded:Connect(function(c)
+    Char = c
+    Hum = c:WaitForChild("Humanoid")
+    Root = c:WaitForChild("HumanoidRootPart")
+    if Config then Hum.WalkSpeed = Config.Speed end
+end)
+
+local Config = {
+    AutoFarm    = false,
+    AutoChop    = false,
+    AutoCollect = false,
+    InfiniteJump= false,
+    NoClip      = false,
+    ESP         = false,
+    AntiAFK     = true,
+    Speed       = 16,
+    SavedPos    = nil,
+    -- Мобы (из консоли: Shadow Cultist)
+    MobNames    = {"Shadow Cultist", "Cultist", "Shadow", "Wolf", "Bear", "Deer", "Boar", "Enemy", "Mob", "Monster"},
+    -- Деревья (подбери после сканера)
+    TreeNames   = {"Tree", "SmallTree", "Bush", "Log", "Trunk", "Wood", "Pine", "Oak"},
+}
+
+-- Безопасное получение позиции любого объекта
+local function GetPos(obj)
+    if not obj then return nil end
+    if obj:IsA("BasePart") then return obj.Position end
+    if obj:IsA("Model") then
+        -- Сначала ищем HumanoidRootPart
+        local hrp = obj:FindFirstChild("HumanoidRootPart")
+        if hrp then return hrp.Position end
+        -- Потом PrimaryPart
+        if obj.PrimaryPart then return obj.PrimaryPart.Position end
+        -- Потом любой BasePart
+        local bp = obj:FindFirstChildWhichIsA("BasePart")
+        if bp then return bp.Position end
+    end
+    return nil
+end
+
+-- Безопасное получение CFrame
+local function GetCF(obj)
+    if not obj then return nil end
+    if obj:IsA("BasePart") then return obj.CFrame end
+    if obj:IsA("Model") then
+        local hrp = obj:FindFirstChild("HumanoidRootPart")
+        if hrp then return hrp.CFrame end
+        if obj.PrimaryPart then return obj.PrimaryPart.CFrame end
+        local bp = obj:FindFirstChildWhichIsA("BasePart")
+        if bp then return bp.CFrame end
+    end
+    return nil
+end
+
+-- ================================================
+-- GUI
+-- ================================================
+local SG = Instance.new("ScreenGui")
+SG.Name = "NightHub"
+SG.ResetOnSpawn = false
+SG.Parent = LP:WaitForChild("PlayerGui")
+
+local Main = Instance.new("Frame")
+Main.Size = UDim2.new(0,300,0,400)
+Main.Position = UDim2.new(0.5,-150,0.5,-200)
+Main.BackgroundColor3 = Color3.fromRGB(10,10,18)
+Main.BorderSizePixel = 0
+Main.ClipsDescendants = true
+Main.Parent = SG
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0,12)
+local MS = Instance.new("UIStroke", Main)
+MS.Color = Color3.fromRGB(80,60,180); MS.Thickness = 1.5
+
+Main.Size = UDim2.new(0,0,0,0)
+Main.Position = UDim2.new(0.5,0,0.5,0)
+TweenService:Create(Main, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+    Size = UDim2.new(0,300,0,400),
+    Position = UDim2.new(0.5,-150,0.5,-200)
+}):Play()
+
+-- Шапка
+local Header = Instance.new("Frame", Main)
+Header.Size = UDim2.new(1,0,0,44)
+Header.BackgroundColor3 = Color3.fromRGB(18,14,40)
+Header.BorderSizePixel = 0
+Instance.new("UICorner", Header).CornerRadius = UDim.new(0,12)
+local HFix = Instance.new("Frame", Header)
+HFix.Size = UDim2.new(1,0,0.5,0)
+HFix.Position = UDim2.new(0,0,0.5,0)
+HFix.BackgroundColor3 = Color3.fromRGB(18,14,40)
+HFix.BorderSizePixel = 0
+local HG = Instance.new("UIGradient", Header)
+HG.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(60,30,130)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(18,14,40))
+})
+HG.Rotation = 90
+
+local Title = Instance.new("TextLabel", Header)
+Title.Text = "🌙 99 НОЧЕЙ  v3.1"
+Title.Size = UDim2.new(1,-80,1,0)
+Title.Position = UDim2.new(0,12,0,0)
+Title.BackgroundTransparency = 1
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 14
+Title.TextColor3 = Color3.fromRGB(220,200,255)
+Title.TextXAlignment = Enum.TextXAlignment.Left
+
+local function MakeHeaderBtn(text, color, xOffset)
+    local b = Instance.new("TextButton", Header)
+    b.Text = text
+    b.Size = UDim2.new(0,28,0,28)
+    b.Position = UDim2.new(1,xOffset,0,8)
+    b.BackgroundColor3 = color
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 12
+    b.TextColor3 = Color3.fromRGB(255,255,255)
+    b.BorderSizePixel = 0
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0,6)
+    return b
+end
+local CloseBtn = MakeHeaderBtn("✕", Color3.fromRGB(200,50,80), -34)
+local MinBtn   = MakeHeaderBtn("—", Color3.fromRGB(60,50,100), -68)
+
+-- Таб бар
+local TabBar = Instance.new("Frame", Main)
+TabBar.Size = UDim2.new(1,-16,0,30)
+TabBar.Position = UDim2.new(0,8,0,50)
+TabBar.BackgroundColor3 = Color3.fromRGB(20,16,38)
+TabBar.BorderSizePixel = 0
+Instance.new("UICorner", TabBar).CornerRadius = UDim.new(0,8)
+local TL = Instance.new("UIListLayout", TabBar)
+TL.FillDirection = Enum.FillDirection.Horizontal
+TL.HorizontalAlignment = Enum.HorizontalAlignment.Center
+TL.VerticalAlignment = Enum.VerticalAlignment.Center
+TL.Padding = UDim.new(0,3)
+
+local ContentArea = Instance.new("Frame", Main)
+ContentArea.Size = UDim2.new(1,-16,1,-88)
+ContentArea.Position = UDim2.new(0,8,0,84)
+ContentArea.BackgroundTransparency = 1
+
+-- ================================================
+-- ЭЛЕМЕНТЫ GUI
+-- ================================================
+local ActiveTab = nil
+local Tabs = {}
+
+local function CreateTab(icon)
+    local Btn = Instance.new("TextButton", TabBar)
+    Btn.Text = icon
+    Btn.Size = UDim2.new(0,52,0,24)
+    Btn.BackgroundColor3 = Color3.fromRGB(30,24,60)
+    Btn.Font = Enum.Font.GothamSemibold
+    Btn.TextSize = 15
+    Btn.TextColor3 = Color3.fromRGB(160,140,220)
+    Btn.BorderSizePixel = 0
+    Instance.new("UICorner", Btn).CornerRadius = UDim.new(0,6)
+
+    local Page = Instance.new("ScrollingFrame", ContentArea)
+    Page.Size = UDim2.new(1,0,1,0)
+    Page.BackgroundTransparency = 1
+    Page.ScrollBarThickness = 2
+    Page.ScrollBarImageColor3 = Color3.fromRGB(80,60,160)
+    Page.BorderSizePixel = 0
+    Page.Visible = false
+    Page.CanvasSize = UDim2.new(0,0,0,0)
+    Page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    local L = Instance.new("UIListLayout", Page)
+    L.Padding = UDim.new(0,5)
+    local P = Instance.new("UIPadding", Page)
+    P.PaddingTop = UDim.new(0,4)
+
+    local function Select()
+        if ActiveTab then
+            TweenService:Create(ActiveTab.Btn, TweenInfo.new(0.2), {
+                BackgroundColor3 = Color3.fromRGB(30,24,60),
+                TextColor3 = Color3.fromRGB(160,140,220)
+            }):Play()
+            ActiveTab.Page.Visible = false
+        end
+        TweenService:Create(Btn, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(80,55,170),
+            TextColor3 = Color3.fromRGB(255,240,255)
+        }):Play()
+        Page.Visible = true
+        ActiveTab = {Btn=Btn, Page=Page}
+    end
+    Btn.MouseButton1Click:Connect(Select)
+    table.insert(Tabs, {Btn=Btn, Page=Page, Select=Select})
+    return Page
+end
+
+local function CreateToggle(parent, text, key, cb)
+    local r = Instance.new("Frame", parent)
+    r.Size = UDim2.new(1,-6,0,38)
+    r.BackgroundColor3 = Color3.fromRGB(18,15,35)
+    r.BorderSizePixel = 0
+    Instance.new("UICorner", r).CornerRadius = UDim.new(0,8)
+
+    local lbl = Instance.new("TextLabel", r)
+    lbl.Text = text
+    lbl.Size = UDim2.new(1,-58,1,0)
+    lbl.Position = UDim2.new(0,10,0,0)
+    lbl.BackgroundTransparency = 1
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 12
+    lbl.TextColor3 = Color3.fromRGB(210,200,240)
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local tog = Instance.new("TextButton", r)
+    tog.Size = UDim2.new(0,40,0,20)
+    tog.Position = UDim2.new(1,-46,0.5,-10)
+    tog.BorderSizePixel = 0; tog.Text = ""
+    Instance.new("UICorner", tog).CornerRadius = UDim.new(1,0)
+    local knob = Instance.new("Frame", tog)
+    knob.Size = UDim2.new(0,14,0,14)
+    knob.Position = UDim2.new(0,3,0.5,-7)
+    knob.BorderSizePixel = 0
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1,0)
+
+    local function Upd(s)
+        TweenService:Create(tog, TweenInfo.new(0.2), {
+            BackgroundColor3 = s and Color3.fromRGB(100,70,210) or Color3.fromRGB(45,35,75)
+        }):Play()
+        TweenService:Create(knob, TweenInfo.new(0.2), {
+            BackgroundColor3 = s and Color3.fromRGB(255,240,255) or Color3.fromRGB(100,90,140),
+            Position = s and UDim2.new(1,-17,0.5,-7) or UDim2.new(0,3,0.5,-7)
+        }):Play()
+    end
+    Upd(Config[key])
+    tog.MouseButton1Click:Connect(function()
+        Config[key] = not Config[key]
+        Upd(Config[key])
+        if cb then cb(Config[key]) end
+    end)
+end
+
+local function CreateButton(parent, text, cb)
+    local btn = Instance.new("TextButton", parent)
+    btn.Text = text
+    btn.Size = UDim2.new(1,-6,0,36)
+    btn.BackgroundColor3 = Color3.fromRGB(70,50,155)
+    btn.Font = Enum.Font.GothamSemibold
+    btn.TextSize = 12
+    btn.TextColor3 = Color3.fromRGB(240,230,255)
+    btn.BorderSizePixel = 0
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0,8)
+    btn.MouseEnter:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(100,75,200)}):Play()
+    end)
+    btn.MouseLeave:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(70,50,155)}):Play()
+    end)
+    btn.MouseButton1Click:Connect(function() if cb then cb() end end)
+    return btn
+end
+
+local function CreateSlider(parent, text, min, max, default, cb)
+    local r = Instance.new("Frame", parent)
+    r.Size = UDim2.new(1,-6,0,52)
+    r.BackgroundColor3 = Color3.fromRGB(18,15,35)
+    r.BorderSizePixel = 0
+    Instance.new("UICorner", r).CornerRadius = UDim.new(0,8)
+
+    local lbl = Instance.new("TextLabel", r)
+    lbl.Text = text
+    lbl.Size = UDim2.new(1,-50,0,20)
+    lbl.Position = UDim2.new(0,10,0,6)
+    lbl.BackgroundTransparency = 1
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 12
+    lbl.TextColor3 = Color3.fromRGB(210,200,240)
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local val = Instance.new("TextLabel", r)
+    val.Text = tostring(default)
+    val.Size = UDim2.new(0,44,0,20)
+    val.Position = UDim2.new(1,-52,0,6)
+    val.BackgroundTransparency = 1
+    val.Font = Enum.Font.GothamBold
+    val.TextSize = 12
+    val.TextColor3 = Color3.fromRGB(160,120,255)
+    val.TextXAlignment = Enum.TextXAlignment.Right
+
+    local track = Instance.new("Frame", r)
+    track.Size = UDim2.new(1,-20,0,5)
+    track.Position = UDim2.new(0,10,0,36)
+    track.BackgroundColor3 = Color3.fromRGB(40,32,80)
+    track.BorderSizePixel = 0
+    Instance.new("UICorner", track).CornerRadius = UDim.new(1,0)
+    local fill = Instance.new("Frame", track)
+    fill.Size = UDim2.new((default-min)/(max-min),0,1,0)
+    fill.BackgroundColor3 = Color3.fromRGB(100,70,210)
+    fill.BorderSizePixel = 0
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(1,0)
+
+    local drag = false
+    track.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.Touch
+        or i.UserInputType == Enum.UserInputType.MouseButton1 then drag = true end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.Touch
+        or i.UserInputType == Enum.UserInputType.MouseButton1 then drag = false end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if drag and (i.UserInputType == Enum.UserInputType.Touch
+        or i.UserInputType == Enum.UserInputType.MouseMovement) then
+            local relX = math.clamp((i.Position.X - track.AbsolutePosition.X)/track.AbsoluteSize.X,0,1)
+            local v = math.floor(min + relX*(max-min))
+            fill.Size = UDim2.new(relX,0,1,0)
+            val.Text = tostring(v)
+            if cb then cb(v) end
+        end
+    end)
+end
+
+-- ================================================
+-- ОКНО ВЫБОРА ПРЕДМЕТА
+-- ================================================
+local ItemWindow = Instance.new("Frame", SG)
+ItemWindow.Size = UDim2.new(0,260,0,320)
+ItemWindow.Position = UDim2.new(0.5,-130,0.5,-160)
+ItemWindow.BackgroundColor3 = Color3.fromRGB(12,10,22)
+ItemWindow.BorderSizePixel = 0
+ItemWindow.Visible = false
+ItemWindow.ZIndex = 10
+Instance.new("UICorner", ItemWindow).CornerRadius = UDim.new(0,12)
+local IWS = Instance.new("UIStroke", ItemWindow)
+IWS.Color = Color3.fromRGB(120,80,220); IWS.Thickness = 1.5
+
+local IWHeader = Instance.new("Frame", ItemWindow)
+IWHeader.Size = UDim2.new(1,0,0,38)
+IWHeader.BackgroundColor3 = Color3.fromRGB(40,25,90)
+IWHeader.BorderSizePixel = 0
+IWHeader.ZIndex = 10
+Instance.new("UICorner", IWHeader).CornerRadius = UDim.new(0,12)
+local IWHFix = Instance.new("Frame", IWHeader)
+IWHFix.Size = UDim2.new(1,0,0.5,0)
+IWHFix.Position = UDim2.new(0,0,0.5,0)
+IWHFix.BackgroundColor3 = Color3.fromRGB(40,25,90)
+IWHFix.BorderSizePixel = 0
+IWHFix.ZIndex = 10
+
+local IWTitle = Instance.new("TextLabel", IWHeader)
+IWTitle.Text = "📦 Выбери предмет"
+IWTitle.Size = UDim2.new(1,-40,1,0)
+IWTitle.Position = UDim2.new(0,10,0,0)
+IWTitle.BackgroundTransparency = 1
+IWTitle.Font = Enum.Font.GothamBold
+IWTitle.TextSize = 13
+IWTitle.TextColor3 = Color3.fromRGB(220,200,255)
+IWTitle.TextXAlignment = Enum.TextXAlignment.Left
+IWTitle.ZIndex = 10
+
+local IWClose = Instance.new("TextButton", IWHeader)
+IWClose.Text = "✕"
+IWClose.Size = UDim2.new(0,26,0,26)
+IWClose.Position = UDim2.new(1,-32,0,6)
+IWClose.BackgroundColor3 = Color3.fromRGB(200,50,80)
+IWClose.Font = Enum.Font.GothamBold
+IWClose.TextSize = 11
+IWClose.TextColor3 = Color3.fromRGB(255,255,255)
+IWClose.BorderSizePixel = 0
+IWClose.ZIndex = 10
+Instance.new("UICorner", IWClose).CornerRadius = UDim.new(0,6)
+IWClose.MouseButton1Click:Connect(function() ItemWindow.Visible = false end)
+
+local SearchBox = Instance.new("TextBox", ItemWindow)
+SearchBox.Size = UDim2.new(1,-16,0,28)
+SearchBox.Position = UDim2.new(0,8,0,44)
+SearchBox.BackgroundColor3 = Color3.fromRGB(25,20,50)
+SearchBox.Font = Enum.Font.Gotham
+SearchBox.TextSize = 12
+SearchBox.TextColor3 = Color3.fromRGB(220,200,255)
+SearchBox.PlaceholderText = "🔎 Поиск..."
+SearchBox.PlaceholderColor3 = Color3.fromRGB(100,90,140)
+SearchBox.BorderSizePixel = 0
+SearchBox.ClearTextOnFocus = false
+SearchBox.ZIndex = 10
+Instance.new("UICorner", SearchBox).CornerRadius = UDim.new(0,8)
+local SBP = Instance.new("UIPadding", SearchBox)
+SBP.PaddingLeft = UDim.new(0,8)
+
+local ItemList = Instance.new("ScrollingFrame", ItemWindow)
+ItemList.Size = UDim2.new(1,-16,1,-80)
+ItemList.Position = UDim2.new(0,8,0,76)
+ItemList.BackgroundTransparency = 1
+ItemList.ScrollBarThickness = 2
+ItemList.ScrollBarImageColor3 = Color3.fromRGB(80,60,160)
+ItemList.BorderSizePixel = 0
+ItemList.CanvasSize = UDim2.new(0,0,0,0)
+ItemList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+ItemList.ZIndex = 10
+local ILL = Instance.new("UIListLayout", ItemList)
+ILL.Padding = UDim.new(0,4)
+
+-- Предметы из вики + моб из консоли
+local ITEMS = {
+    {"🌲","Tree"}, {"🌲","SmallTree"}, {"🌲","Pine"}, {"🌲","Oak"},
+    {"🪵","Log"}, {"🪵","Wood"}, {"🪵","Plank"},
+    {"🪨","Rock"}, {"🪨","Stone"},
+    {"🌿","Bush"}, {"🌾","Fiber"}, {"🍄","Mushroom"},
+    {"💀","Shadow Cultist"}, {"🐺","Wolf"}, {"🐻","Bear"},
+    {"🦌","Deer"}, {"🐗","Boar"},
+    {"💎","Crystal"}, {"🦴","Bone"}, {"🍖","Meat"},
+    {"🧪","Potion"}, {"⚗️","Herb"}, {"🪙","Coin"},
+    {"💰","Gold"}, {"📦","Chest"}, {"🗝️","Key"},
+}
+
+local function BuildItemList(filter)
+    for _, c in pairs(ItemList:GetChildren()) do
+        if c:IsA("TextButton") then c:Destroy() end
+    end
+    for _, item in pairs(ITEMS) do
+        local emoji, name = item[1], item[2]
+        if filter == "" or name:lower():find(filter:lower()) then
+            local btn = Instance.new("TextButton", ItemList)
+            btn.Text = emoji .. "  " .. name
+            btn.Size = UDim2.new(1,0,0,32)
+            btn.BackgroundColor3 = Color3.fromRGB(22,18,45)
+            btn.Font = Enum.Font.GothamSemibold
+            btn.TextSize = 12
+            btn.TextColor3 = Color3.fromRGB(200,185,240)
+            btn.TextXAlignment = Enum.TextXAlignment.Left
+            btn.BorderSizePixel = 0
+            btn.ZIndex = 10
+            Instance.new("UICorner", btn).CornerRadius = UDim.new(0,8)
+            local BP = Instance.new("UIPadding", btn)
+            BP.PaddingLeft = UDim.new(0,10)
+
+            btn.MouseButton1Click:Connect(function()
+                for _, c2 in pairs(ItemList:GetChildren()) do
+                    if c2:IsA("TextButton") then
+                        c2.BackgroundColor3 = Color3.fromRGB(22,18,45)
+                        c2.TextColor3 = Color3.fromRGB(200,185,240)
+                    end
+                end
+                btn.BackgroundColor3 = Color3.fromRGB(80,55,170)
+                btn.TextColor3 = Color3.fromRGB(255,240,255)
+
+                local count = 0
+                for _, obj in pairs(workspace:GetDescendants()) do
+                    if obj.Name == name or obj.Name:lower():find(name:lower()) then
+                        local pos = GetPos(obj)
+                        if pos and not obj:IsDescendantOf(Char) then
+                            pcall(function()
+                                if obj:IsA("BasePart") then
+                                    obj.CFrame = Root.CFrame + Vector3.new(math.random(-2,2),1,math.random(-2,2))
+                                elseif obj:IsA("Model") and obj.PrimaryPart then
+                                    obj:SetPrimaryPartCFrame(Root.CFrame + Vector3.new(math.random(-2,2),1,math.random(-2,2)))
+                                end
+                            end)
+                            count = count + 1
+                        end
+                    end
+                end
+                IWTitle.Text = "✅ " .. count .. " шт. притянуто!"
+                task.delay(2, function() IWTitle.Text = "📦 Выбери предмет" end)
+            end)
+        end
+    end
+end
+
+BuildItemList("")
+SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+    BuildItemList(SearchBox.Text)
+end)
+
+-- ================================================
+-- ВКЛАДКИ
+-- ================================================
+local FarmPage   = CreateTab("⚔️")
+local PlayerPage = CreateTab("🧍")
+local VisualPage = CreateTab("👁️")
+local MiscPage   = CreateTab("⚙️")
+Tabs[1].Select()
+
+-- ================================================
+-- ФАРМ
+-- ================================================
+CreateToggle(FarmPage, "⚡ Авто-фарм (Shadow Cultist)", "AutoFarm", function(s) end)
+CreateToggle(FarmPage, "🌲 Авто-рубка деревьев", "AutoChop", function(s) end)
+CreateToggle(FarmPage, "💰 Авто-сбор предметов", "AutoCollect", function(s) end)
+
+CreateButton(FarmPage, "💀 ТП к Shadow Cultist", function()
+    local nearest, dist = nil, math.huge
+    for _, obj in pairs(workspace:GetDescendants()) do
+        -- Ищем именно Shadow Cultist
+        if obj:IsA("Model") and (obj.Name == "Shadow Cultist" or obj.Name:find("Cultist")) then
+            local pos = GetPos(obj)
+            if pos then
+                local d = (Root.Position - pos).Magnitude
+                if d < dist then dist = d; nearest = obj end
+            end
+        end
+    end
+    if nearest then
+        local cf = GetCF(nearest)
+        if cf then Root.CFrame = cf + Vector3.new(0,2,3) end
+    end
+end)
+
+CreateButton(FarmPage, "📦 ТП предметов к себе →", function()
+    ItemWindow.Visible = true
+    BuildItemList("")
+    SearchBox.Text = ""
+end)
+
+CreateButton(FarmPage, "🔎 Найти деревья (консоль)", function()
+    print("=== ДЕРЕВЬЯ В ОКРУГЕ ===")
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") or obj:IsA("Model") then
+            local pos = GetPos(obj)
+            if pos then
+                local d = (Root.Position - pos).Magnitude
+                if d < 30 then
+                    print(obj.Name .. " | " .. obj.ClassName)
+                end
+            end
+        end
+    end
+    print("=== КОНЕЦ ===")
+end)
+
+-- ================================================
+-- ИГРОК
+-- ================================================
+CreateSlider(PlayerPage, "🏃 Скорость", 16, 150, 16, function(v)
+    Config.Speed = v
+    if Hum then Hum.WalkSpeed = v end
+end)
+
+CreateSlider(PlayerPage, "🦘 Прыжок", 50, 300, 50, function(v)
+    if Hum then Hum.JumpPower = v end
+end)
+
+CreateToggle(PlayerPage, "♾ Бесконечный прыжок", "InfiniteJump", function(s) end)
+CreateToggle(PlayerPage, "👻 Нет-клип", "NoClip", function(s) end)
+
+CreateButton(PlayerPage, "❤️ Восстановить HP", function()
+    if Hum then Hum.Health = Hum.MaxHealth end
+end)
+
+CreateButton(PlayerPage, "📍 Сохранить позицию", function()
+    Config.SavedPos = Root.CFrame
+end)
+
+CreateButton(PlayerPage, "↩️ ТП на сохранённую позицию", function()
+    if Config.SavedPos then Root.CFrame = Config.SavedPos end
+end)
+
+CreateButton(PlayerPage, "🌀 Сбросить персонажа", function()
+    LP:LoadCharacter()
+end)
+
+-- ================================================
+-- ВИЗУАЛ
+-- ================================================
+CreateToggle(VisualPage, "🔍 ESP игроков", "ESP", function(state)
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= LP and plr.Character then
+            local h = plr.Character:FindFirstChild("ESPhl")
+            if state and not h then
+                local hl = Instance.new("Highlight", plr.Character)
+                hl.Name = "ESPhl"
+                hl.FillColor = Color3.fromRGB(150,100,255)
+                hl.OutlineColor = Color3.fromRGB(255,220,255)
+                hl.FillTransparency = 0.5
+            elseif not state and h then h:Destroy() end
+        end
+    end
+end)
+
+CreateButton(VisualPage, "🌙 Ночное время", function()
+    local L = game:GetService("Lighting")
+    L.TimeOfDay = "00:00:00"
+    L.Ambient = Color3.fromRGB(30,20,60)
+end)
+
+CreateButton(VisualPage, "🌅 Дневное время", function()
+    local L = game:GetService("Lighting")
+    L.TimeOfDay = "12:00:00"
+    L.Ambient = Color3.fromRGB(100,100,100)
+end)
+
+CreateButton(VisualPage, "🌈 Убрать туман", function()
+    local L = game:GetService("Lighting")
+    L.FogEnd = 100000
+    L.FogStart = 99999
+    for _, v in pairs(L:GetChildren()) do
+        if v:IsA("Atmosphere") then v:Destroy() end
+    end
+end)
+
+-- ================================================
+-- ПРОЧЕЕ
+-- ================================================
+CreateToggle(MiscPage, "🔄 Анти-АФК", "AntiAFK", function(s) end)
+
+CreateButton(MiscPage, "🔁 Реджоин сервер", function()
+    game:GetService("TeleportService"):Teleport(game.PlaceId, LP)
+end)
+
+CreateButton(MiscPage, "📋 Скопировать ID сервера", function()
+    pcall(function() setclipboard(game.JobId) end)
+end)
+
+CreateButton(MiscPage, "🔎 Сканер всех объектов", function()
+    local seen = {}
+    for _, obj in pairs(workspace:GetDescendants()) do
+        local pos = GetPos(obj)
+        if pos and not seen[obj.Name] then
+            local d = (Root.Position - pos).Magnitude
+            if d < 40 then
+                seen[obj.Name] = true
+                print("[Скан] " .. obj.Name .. " | " .. obj.ClassName)
+            end
+        end
+    end
+    print("[Скан] ✅ Готово! F9 для просмотра.")
+end)
+
+-- ================================================
+-- ЛОГИКА RunService — ИСПРАВЛЕННАЯ
+-- ================================================
+local farmCD, chopCD, collectCD = 0, 0, 0
+
+RunService.Heartbeat:Connect(function(dt)
+    if not Char or not Hum or not Root then return end
+    farmCD -= dt; chopCD -= dt; collectCD -= dt
+
+    -- АВТОФАРМ Shadow Cultist
+    if Config.AutoFarm and farmCD <= 0 then
+        farmCD = 0.25
+        local nearest, dist = nil, 60
+        for _, obj in pairs(workspace:GetDescendants()) do
+            -- ФИКС: ищем по имени модели, не через Position напрямую
+            if obj:IsA("Model")
+            and (obj.Name == "Shadow Cultist" or obj.Name:find("Cultist") or obj.Name:find("Shadow"))
+            and obj ~= Char then
+                local hum = obj:FindFirstChildWhichIsA("Humanoid")
+                if hum and hum.Health > 0 then
+                    local pos = GetPos(obj) -- ФИКС: безопасное получение позиции
+                    if pos then
+                        local d = (Root.Position - pos).Magnitude
+                        if d < dist then dist = d; nearest = obj end
+                    end
+                end
+            end
+        end
+        if nearest then
+            local cf = GetCF(nearest)
+            if cf then
+                -- Встаём рядом с мобом
+                Root.CFrame = cf + Vector3.new(0, 2, 2.5)
+                -- Активируем инструмент
+                local tool = Char:FindFirstChildWhichIsA("Tool")
+                if tool then
+                    pcall(function() tool:Activate() end)
+                    for _, v in pairs(tool:GetDescendants()) do
+                        if v:IsA("RemoteEvent") then
+                            pcall(function() v:FireServer(nearest) end)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- АВТОРУБКА деревьев
+    if Config.AutoChop and chopCD <= 0 then
+        chopCD = 0.3
+        local nearestTree, treeDist = nil, 80
+        for _, obj in pairs(workspace:GetDescendants()) do
+            local name = obj.Name:lower()
+            for _, tname in pairs(Config.TreeNames) do
+                if name:find(tname:lower()) then
+                    local pos = GetPos(obj)
+                    if pos then
+                        local d = (Root.Position - pos).Magnitude
+                        if d < treeDist and not obj:IsDescendantOf(Char) then
+                            treeDist = d; nearestTree = obj
+                        end
+                    end
+                    break
+                end
+            end
+        end
+        if nearestTree then
+            local cf = GetCF(nearestTree)
+            if cf then
+                Root.CFrame = cf + Vector3.new(0,1,2.5)
+                local tool = Char:FindFirstChildWhichIsA("Tool")
+                if tool then
+                    pcall(function() tool:Activate() end)
+                    for _, v in pairs(tool:GetDescendants()) do
+                        if v:IsA("RemoteEvent") then
+                            pcall(function() v:FireServer(nearestTree) end)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- АВТОСБОР
+    if Config.AutoCollect and collectCD <= 0 then
+        collectCD = 0.2
+        local nearest, dist = nil, 80
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj:IsA("BasePart") and not obj.Anchored
+            and not obj:IsDescendantOf(Char)
+            and obj.Size.Magnitude < 8
+            and obj.Parent ~= workspace then
+                local d = (Root.Position - obj.Position).Magnitude
+                if d < dist and d > 1 then dist = d; nearest = obj end
+            end
+        end
+        if nearest then
+            Root.CFrame = CFrame.new(nearest.Position + Vector3.new(0,2,0))
+        end
+    end
+
+    -- НЕТ-КЛИП
+    if Config.NoClip then
+        for _, p in pairs(Char:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide = false end
+        end
+    end
+end)
+
+-- Бесконечный прыжок
+UserInputService.JumpRequest:Connect(function()
+    if Config.InfiniteJump and Hum then
+        Hum:ChangeState(Enum.HumanoidStateType.Jumping)
+    end
+end)
+
+-- Анти-АФК
+local VU = game:GetService("VirtualUser")
+LP.Idled:Connect(function()
+    if Config.AntiAFK then
+        VU:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+        task.wait(0.1)
+        VU:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+    end
+end)
+
+-- ================================================
+-- ПЕРЕТАСКИВАНИЕ
+-- ================================================
+local drag, dragStart, startPos = false, nil, nil
+Header.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.Touch
+    or i.UserInputType == Enum.UserInputType.MouseButton1 then
+        drag = true; dragStart = i.Position; startPos = Main.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(i)
+    if drag and (i.UserInputType == Enum.UserInputType.Touch
+    or i.UserInputType == Enum.UserInputType.MouseMovement) then
+        local d = i.Position - dragStart
+        Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset+d.X,
+                                   startPos.Y.Scale, startPos.Y.Offset+d.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.Touch
+    or i.UserInputType == Enum.UserInputType.MouseButton1 then drag = false end
+end)
+
+-- Свернуть / закрыть
+local minimized = false
+MinBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    TweenService:Create(Main, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+        Size = minimized and UDim2.new(0,300,0,44) or UDim2.new(0,300,0,400)
+    }):Play()
+    MinBtn.Text = minimized and "▲" or "—"
+end)
+CloseBtn.MouseButton1Click:Connect(function()
+    TweenService:Create(Main, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+        Size = UDim2.new(0,0,0,0),
+        Position = UDim2.new(0.5,0,0.5,0)
+    }):Play()
+    task.delay(0.35, function() SG:Destroy() end)
+end)
+
+print("[99 Nights v3.1] ✅ Загружен! Ошибка Position исправлена!") 
